@@ -7,7 +7,7 @@ FORMAT = pyaudio.paInt16
 CHANNELS = 1
 RATE = 16000
 RECORD_SECONDS = 10  # Записываем 5 секунд для теста
-WAVE_OUTPUT_FILENAME = "../../test_audio.wav"
+WAVE_OUTPUT_FILENAME = "../../../test_audio.wav"
 
 # Инициализация PyAudio
 p = pyaudio.PyAudio()

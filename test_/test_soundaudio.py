@@ -6,7 +6,7 @@ import wave
 RATE = 16000
 CHANNELS = 1
 RECORD_SECONDS = 10
-WAVE_OUTPUT_FILENAME = "../../test_audio.wav"
+WAVE_OUTPUT_FILENAME = "../../../test_audio.wav"
 
 # Получаем устройство вывода
 speaker = sc.default_speaker()

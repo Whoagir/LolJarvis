@@ -5,7 +5,7 @@ import sys
 
 # Путь к модели Vosk
 MODEL_PATH = "C:/model/vosk-model-small-ru-0.22"  # Укажи путь к своей модели
-AUDIO_FILE = "../../test_audio.wav"  # Файл из предыдущего шага
+AUDIO_FILE = "../../../test_audio.wav"  # Файл из предыдущего шага
 
 # Загружаем модель
 model = vosk.Model(MODEL_PATH)
