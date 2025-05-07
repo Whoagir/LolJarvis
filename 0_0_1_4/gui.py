@@ -1,10 +1,39 @@
+import os
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
+import torch
+torch.set_num_threads(1)
+
 from PyQt5.QtWidgets import (QWidget, QLabel, QVBoxLayout, QPushButton,
                              QHBoxLayout, QApplication, QProgressBar, QTextEdit)
 from PyQt5.QtCore import Qt, QTimer
 from PyQt5.QtGui import QFont
 import time
-from duckai import DuckAI  # Добавляем импорт DuckAI
+from audio_recorder import AudioRecorder
+import multiprocessing as mp
+import faulthandler, sys, traceback
+faulthandler.enable()
+os.environ["PYTHONFAULTHANDLER"] = "1"
 
+class RequestProcess(mp.Process):
+    def __init__(self, conn, query, model="gpt-4o-mini"):
+        super().__init__()
+        self.conn  = conn
+        self.query = query
+        self.model = model
+
+    def run(self):
+        try:
+            print("[RequestProcess] start, pid =", os.getpid(), flush=True)
+            from duckai import DuckAI
+            duck = DuckAI()
+            self.conn.send("[RequestProcess] Запрос отправлен…")
+            resp = duck.chat(self.query, model=self.model)
+            self.conn.send(resp)
+        except Exception as e:
+            tb = traceback.format_exc()
+            self.conn.send(f"[RequestProcess] Python-ошибка: {e}\n{tb}")
+        finally:
+            self.conn.close()
 
 class TranscriptionWindow(QWidget):
     def __init__(self, audio_recorder):
@@ -12,7 +41,6 @@ class TranscriptionWindow(QWidget):
         self.audio_recorder = audio_recorder
         self.is_recording = False
         self.is_paused = False
-        self.duckai = DuckAI()  # Создаем экземпляр DuckAI
 
         # Настройка окна
         self.setWindowTitle("Транскрибация аудио")
@@ -133,7 +161,7 @@ class TranscriptionWindow(QWidget):
         self.transcribe_button.setEnabled(False)
         buttons_layout.addWidget(self.transcribe_button)
 
-        # Добавляем кнопку отправки запроса
+        # Кнопка отправки запроса
         self.send_request_button = QPushButton("Отправить запрос")
         self.send_request_button.setStyleSheet("""
             QPushButton {
@@ -191,7 +219,7 @@ class TranscriptionWindow(QWidget):
         main_layout.addWidget(self.response_output)
 
         self.setLayout(main_layout)
-        self.resize(600, 600)  # Увеличиваем размер окна для нового содержимого
+        self.resize(600, 600)
 
         # Подключение сигналов от аудио рекордера
         self.audio_recorder.signals.transcription_complete.connect(self.handle_transcription_complete)
@@ -285,68 +313,69 @@ class TranscriptionWindow(QWidget):
         self.transcribe_button.setEnabled(True)
         self.record_button.setEnabled(True)
         self.clear_button.setEnabled(True)
-        self.send_request_button.setEnabled(True)  # Активируем кнопку отправки запроса
+        self.send_request_button.setEnabled(True)
         self.progress_bar.hide()
 
     def handle_transcription_progress(self, progress):
         self.progress_bar.setValue(int(progress))
 
     def send_request(self):
-        # Получаем транскрибированный текст
         transcribed_text = self.text_output.text()
+        if not transcribed_text or transcribed_text.startswith("Здесь будет"):
+            self._set_status("Нет текста для отправки запроса", bad=True)
+            return
 
-        if transcribed_text and transcribed_text != "Здесь будет отображаться транскрибированный текст":
-            self.status_label.setText("Отправка запроса...")
-            self.status_label.setStyleSheet("color: #4CAF50; font-size: 14px;")
-            self.send_request_button.setEnabled(False)
+        prompt = ("Представь ты на собеседование мидл python разработчик, "
+                  "тебе надо коротко ответить на вопрос. "
+                  "Учитывай, что я могу опечататься…  Вот вопрос:")
+        query = f"{prompt} {transcribed_text}"
+        print("[GUI] Отправляемый запрос:", query, flush=True)
 
-            # Формируем запрос
-            prompt = "Представь ты на собеседование мидл python разработчик, тебе надо коротко ответить на вопрос. Учитывай, что я могу опечататься в предложение, но тебе надо стараться понять о чем разговор и дать ответ. Вот вопрос:"
-            query = prompt + " " + transcribed_text
+        # Создаём канал для общения
+        parent_conn, child_conn = mp.Pipe()
+        # Запускаем процесс
+        self.req_proc = RequestProcess(child_conn, query)
+        self.req_proc.start()
 
-            # Отладочный вывод
-            print(f"Отправляемый запрос: {query}")
+        # Опрашиваем канал таймером, чтобы не блокировать GUI
+        self.req_timer = QTimer()
+        self.req_timer.timeout.connect(lambda: self._poll_reply(parent_conn))
+        self.req_timer.start(100)       # 10 раз в секунду
+        self._set_status("Отправка запроса…")
 
-            # Создаем отдельный поток для запроса, чтобы не блокировать интерфейс
-            self.request_thread = RequestThread(self.duckai, query)
-            self.request_thread.response_received.connect(self.handle_response)
-            self.request_thread.start()
-        else:
-            self.status_label.setText("Нет текста для отправки запроса")
-            self.status_label.setStyleSheet("color: #F44336; font-size: 14px;")
+    def _poll_reply(self, conn):
+        while conn.poll():
+            msg = conn.recv()
+            if msg.startswith("[RequestProcess]") and "Python-ошибка" not in msg:
+                print(msg)
+            else:
+                self.handle_response(msg)
+                self.req_timer.stop()
+                if self.req_proc.is_alive():
+                    self.req_proc.join(timeout=0.5)
+                break
 
     def handle_response(self, response):
-        self.response_output.setText(response)
-        self.status_label.setText("Ответ получен")
-        self.status_label.setStyleSheet("color: #4CAF50; font-size: 14px;")
+        if "Python-ошибка" in response:
+            self.response_output.setText(response)
+            self._set_status("Ошибка при получении ответа", bad=True)
+        else:
+            self.response_output.setText(response)
+            self._set_status("Ответ получен")
         self.send_request_button.setEnabled(True)
+
+    def _set_status(self, txt, bad=False):
+        color = "#F44336" if bad else "#4CAF50"
+        self.status_label.setText(txt)
+        self.status_label.setStyleSheet(f"color:{color}; font-size:14px;")
 
     def closeEvent(self, event):
         self.audio_recorder.stop()
         event.accept()
 
-
-# Добавляем класс для обработки запросов в отдельном потоке
-from PyQt5.QtCore import QThread, pyqtSignal
-
-
-class RequestThread(QThread):
-    response_received = pyqtSignal(str)
-
-    def __init__(self, duckai, query, model="gpt-4o-mini"):
-        super().__init__()
-        self.duckai = duckai
-        self.query = query
-        self.model = model
-
-    def run(self):
-        try:
-            print(f"Начинаем запрос с моделью {self.model}")
-            response = self.duckai.chat(self.query, model=self.model)
-            print(f"Получен ответ: {response[:100]}...")  # Выводим первые 100 символов ответа
-            self.response_received.emit(response)
-        except Exception as e:
-            print(f"Ошибка при выполнении запроса: {str(e)}")
-            import traceback
-            traceback.print_exc()
-            self.response_received.emit(f"Ошибка при получении ответа: {str(e)}")
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    recorder = AudioRecorder()
+    window = TranscriptionWindow(recorder)
+    window.show()
+    sys.exit(app.exec_())

@@ -1,0 +1,77 @@
+Структура проекта:
+├── audio_recorder.py
+├── gui.py
+├── main.py
+├── __pycache__/
+│   ├── audio_recorder.cpython-312.pyc
+│   └── gui.cpython-312.pyc
+
+==================================================
+
+Функции и классы по файлам:
+
+Файл: audio_recorder.py
+-def preprocess_audio(audio_data, sample_rate)
+-def postprocess_transcription(text)
+-class TranscriptionWorker(QThread)
+-    def __init__(self, audio_data, model)
+-    def run(self)
+-class SegmentTranscriptionWorker(QThread)
+-    def __init__(self, audio_segments, model)
+-    def run(self)
+-class AudioRecorderSignals(QObject)
+-class AudioRecorder
+-    def __init__(self, model_name)
+-    def start_recording(self)
+-    def pause_recording(self)
+-    def resume_recording(self)
+-    def clear_recording(self)
+-    def has_recording(self)
+-    def _record_audio(self)
+-    def transcribe(self)
+-    def stop(self)
+-def __init__(self, audio_data, model)
+-def run(self)
+-def __init__(self, audio_segments, model)
+-def run(self)
+-def __init__(self, model_name)
+-def start_recording(self)
+-def pause_recording(self)
+-def resume_recording(self)
+-def clear_recording(self)
+-def has_recording(self)
+-def _record_audio(self)
+-def transcribe(self)
+-def stop(self)
+
+Файл: gui.py
+-class RequestProcess(mp.Process)
+-    def __init__(self, conn, query, model)
+-    def run(self)
+-class TranscriptionWindow(QWidget)
+-    def __init__(self, audio_recorder)
+-    def toggle_recording(self)
+-    def clear_recording(self)
+-    def transcribe_audio(self)
+-    def update_recording_time(self)
+-    def handle_transcription_complete(self, text)
+-    def handle_transcription_progress(self, progress)
+-    def send_request(self)
+-    def _poll_reply(self, conn)
+-    def handle_response(self, response)
+-    def _set_status(self, txt, bad)
+-    def closeEvent(self, event)
+-def __init__(self, conn, query, model)
+-def run(self)
+-def __init__(self, audio_recorder)
+-def toggle_recording(self)
+-def clear_recording(self)
+-def transcribe_audio(self)
+-def update_recording_time(self)
+-def handle_transcription_complete(self, text)
+-def handle_transcription_progress(self, progress)
+-def send_request(self)
+-def _poll_reply(self, conn)
+-def handle_response(self, response)
+-def _set_status(self, txt, bad)
+-def closeEvent(self, event)

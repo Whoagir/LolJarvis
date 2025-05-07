@@ -1,0 +1,8 @@
+numpy
+soundcard
+openai-whisper
+soundfile
+torch
+scipy
+PyQt5
+duckai
